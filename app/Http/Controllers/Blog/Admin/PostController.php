@@ -10,6 +10,8 @@ use App\Models\BlogCategory;
 //use Illuminate\Http\Request;
 use App\Http\Requests\BlogCategoryUpdateRequest;
 use App\Http\Requests\BlogCategoryCreateRequest;
+use App\Models\BlogPost;
+use App\Http\Requests\BlogPostCreateRequest;
 
 class PostController extends BaseController
 {
@@ -47,28 +49,27 @@ class PostController extends BaseController
     public function create()
     {
         //dd(__METHOD__);
-        $item = new BlogCategory();
-        $categoryList = $this->blogCategoryRepository->getForComboBox(); //BlogCategory::all();
+        $item = new BlogPost();
+        $categoryList = $this->blogCategoryRepository->getForComboBox();
 
-        return view('blog.admin.categories.edit', compact('item', 'categoryList'));
+
+        return view('blog.admin.posts.edit', compact('item', 'categoryList'));
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(BlogCategoryCreateRequest $request)
+    public function store(BlogPostCreateRequest $request
+    )
     {
         //dd(__METHOD__);
         $data = $request->input(); //отримаємо масив даних, які надійшли з форми
-        if (empty($data['slug'])) { //якщо псевдонім порожній
-            $data['slug'] = Str::slug($data['title']); //генеруємо псевдонім
-        }
 
-        $item = (new BlogCategory())->create($data); //створюємо об'єкт і додаємо в БД
+        $item = (new BlogPost())->create($data); //створюємо об'єкт і додаємо в БД
 
         if ($item) {
             return redirect()
-                ->route('blog.admin.categories.edit', [$item->id])
+                ->route('blog.admin.posts.edit', [$item->id])
                 ->with(['success' => 'Успішно збережено']);
         } else {
             return back()
@@ -132,6 +133,18 @@ class PostController extends BaseController
      */
     public function destroy(string $id)
     {
+        $result = BlogPost::destroy($id); //софт деліт, запис лишається
+
+        //$result = BlogPost::find($id)->forceDelete(); //повне видалення з БД
+
+        if ($result) {
+            return redirect()
+                ->route('blog.admin.posts.index')
+                ->with(['success' => "Запис id[$id] видалено"]);
+        } else {
+            return back()
+                ->withErrors(['msg' => 'Помилка видалення']);
+        }
         //dd(__METHOD__);
     }
 }
