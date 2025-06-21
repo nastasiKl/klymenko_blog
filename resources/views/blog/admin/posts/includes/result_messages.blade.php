@@ -6,11 +6,7 @@
                 <button type="button" class="close" data-dismiss="alert" aria-label="close">
                     <span aria-hidden="true">&times;</span>
                 </button>
-                <ul>
-                    @foreach ($errors->all() as $errorTxt) {{-- виводимо всі помилки --}}
-                    <li>{{ $errorTxt }}</li>
-                    @endforeach
-                </ul>
+                {{ $errors->first() }}
             </div>
         </div>
     </div>
