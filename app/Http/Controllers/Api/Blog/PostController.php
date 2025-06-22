@@ -5,62 +5,130 @@ namespace App\Http\Controllers\Api\Blog;
 use App\Http\Controllers\Controller;
 use App\Models\BlogPost;
 use Illuminate\Http\Request;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Str;
 
 class PostController extends Controller
 {
     /**
-     * Метод для отримання списку блог-постів для API.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Вивести список постів з пагінацією.
      */
     public function index(Request $request)
     {
         $perPage = $request->query('per_page', 10);
         $page = $request->query('page', 1);
 
-        /** @var LengthAwarePaginator $posts */
         $posts = BlogPost::with(['user:id,name', 'category:id,title'])
-            ->orderBy('id', 'DESC')
+            ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $formattedPosts = $posts->map(function ($post) {
-            return [
-                'id' => $post->id,
-                'title' => $post->title,
-                'slug' => $post->slug,
-                'is_published' => $post->is_published,
-                'published_at' => $post->published_at ? \Carbon\Carbon::parse($post->published_at)->format('d.M H:i') : '',
-                'user' => ['name' => $post->user->name],
-                'category' => ['title' => $post->category->title],
-            ];
-        });
+        $formatted = $posts->map(fn($post) => [
+            'id' => $post->id,
+            'title' => $post->title,
+            'slug' => $post->slug,
+            'is_published' => $post->is_published,
+            'published_at' => $post->published_at,
+            'user' => ['name' => $post->user->name],
+            'category' => ['title' => $post->category->title],
+        ]);
 
         return response()->json([
-            'data' => $formattedPosts,
+            'data' => $formatted,
             'meta' => [
                 'current_page' => $posts->currentPage(),
-                'from' => $posts->firstItem(),
                 'last_page' => $posts->lastPage(),
                 'per_page' => $posts->perPage(),
-                'to' => $posts->lastItem(),
                 'total' => $posts->total(),
-            ],
-            'links' => [
-                'first' => $posts->url(1),
-                'last' => $posts->url($posts->lastPage()),
-                'prev' => $posts->previousPageUrl(),
-                'next' => $posts->nextPageUrl(),
             ],
         ]);
     }
 
-    public function show(string $id)
+    /**
+     * Зберегти новий пост.
+     */
+    public function store(Request $request)
     {
-        $post = BlogPost::with(['user', 'category'])->findOrFail($id);
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'slug' => 'nullable|string|max:255',
+            'content_raw' => 'nullable|string',
+            'excerpt' => 'nullable|string',
+            'category_id' => 'required|exists:blog_categories,id',
+            'is_published' => 'boolean',
+            'published_at' => 'nullable|date',
+        ]);
 
-        return $post;
+        if (empty($validated['slug'])) {
+            $validated['slug'] = Str::slug($validated['title']);
+        }
+
+        $validated['user_id'] = auth()->id(); // або інша логіка автора
+
+        $post = BlogPost::create($validated);
+
+        return response()->json($post, 201);
     }
 
+    /**
+     * Показати конкретний пост.
+     */
+    public function show($id)
+    {
+        $post = BlogPost::with(['user:id,name', 'category:id,title'])->findOrFail($id);
+
+        return response()->json([
+            'id' => $post->id,
+            'title' => $post->title,
+            'slug' => $post->slug,
+            'content_raw' => $post->content_raw,
+            'excerpt' => $post->excerpt,
+            'is_published' => $post->is_published,
+            'published_at' => $post->published_at,
+            'category_id' => $post->category_id,
+            'user' => ['name' => $post->user->name],
+            'category' => ['title' => $post->category->title, 'id' => $post->category->id],
+        ]);
+    }
+
+    /**
+     * Оновити пост.
+     */
+    public function update(Request $request, $id)
+    {
+        $post = BlogPost::findOrFail($id);
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'slug' => 'nullable|string|max:255',
+            'content_raw' => 'nullable|string',
+            'excerpt' => 'nullable|string',
+            'category_id' => 'required|exists:blog_categories,id',
+            'is_published' => 'boolean',
+            'published_at' => 'nullable|date',
+        ]);
+
+        if (empty($validated['slug'])) {
+            $validated['slug'] = Str::slug($validated['title']);
+        }
+
+        if (isset($validated['is_published']) && $validated['is_published'] && !$post->published_at) {
+            $validated['published_at'] = now();
+        } elseif (empty($validated['is_published'])) {
+            $validated['published_at'] = null;
+        }
+
+        $post->update($validated);
+
+        return response()->json($post);
+    }
+
+    /**
+     * Видалити пост.
+     */
+    public function destroy($id)
+    {
+        $post = BlogPost::findOrFail($id);
+        $post->delete();
+
+        return response()->json(['message' => 'Пост видалено']);
+    }
 }
